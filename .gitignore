@@ -174,3 +174,4 @@ cython_debug/
 # OS generated files
 .DS_Store
 Thumbs.db
+test_frontend.html
