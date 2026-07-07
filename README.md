@@ -1,14 +1,77 @@
-# 🌐 Gateway Multicanal — Vertex AI Agent Runtime
+# Gateway Multicanal — Vertex AI Agent Runtime
 
-Microservicio FastAPI que conecta **WhatsApp**, **Telegram** y una **Web App** con un Agente de IA desplegado en [Vertex AI Agent Runtime](https://cloud.google.com/vertex-ai/docs/reasoning-engine/overview) (Reasoning Engine).
+## Título y Descripción
+El **Gateway Multicanal** es un microservicio (BFF - Backend For Frontend) que sirve como puente de comunicación ("Orejas y Boca") entre múltiples canales externos (Web, WhatsApp, Telegram) y el cerebro del sistema: el Agente de IA alojado en Google Cloud Vertex AI (Reasoning Engine).
 
-## Arquitectura
+Este proyecto resuelve el problema de integración, recibiendo webhooks, estandarizando los mensajes de los usuarios y gestionando las sesiones (`session_id`) antes de pasarlas de forma segura al agente alojado en la nube. No contiene lógica de IA ni de negocio, es puramente un orquestador de APIs de mensajería.
 
-```
-WhatsApp  ──┐
-Telegram  ──┼──▶  Cloud Run Gateway  ──▶  Vertex AI Reasoning Engine
-Web App   ──┘          (FastAPI)               (Agente de IA)
-```
+## Relación con el Agente Urbanístico
+Este proyecto funciona en conjunto con el repositorio del **Agente Urbanístico**:
+- El **Agente** (Reasoning Engine) es el "cerebro". Entiende el contexto legal y consulta el Data Store (RAG).
+- El **Gateway** (este repositorio) es la interfaz pública en Cloud Run. Toma los eventos de Telegram/WhatsApp, se autentica con GCP, llama al Agente pasándole el ID de la sesión del chat, y cuando el agente responde, el Gateway se encarga de formatear el JSON para mandarle el mensaje de vuelta al teléfono del usuario.
+
+## Prerrequisitos
+- **Python 3.11+**
+- **Docker** (para empaquetado y despliegue)
+- **Google Cloud CLI** (`gcloud`) para autenticación.
+- Cuentas de desarrollador y Tokens de acceso para la API de Telegram y Meta Cloud API (WhatsApp).
+
+## Instalación y Configuración
+
+Sigue estos pasos para levantar el entorno en tu máquina local:
+
+1. **Clonar el repositorio y entrar al directorio:**
+   ```bash
+   git clone <url-del-repo>
+   cd gateway-ai-urbanistico
+   ```
+
+2. **Crear entorno virtual e instalar dependencias:**
+   ```bash
+   python -m venv .venv
+   # En Windows:
+   .venv\Scripts\activate
+   # En macOS/Linux:
+   source .venv/bin/activate
+   
+   pip install -r requirements.txt
+   ```
+
+3. **Configurar variables de entorno:**
+   Copia la plantilla y edita con tus credenciales reales.
+   ```bash
+   cp .env.example .env
+   ```
+
+4. **Autenticación con Google Cloud (Application Default Credentials):**
+   ```bash
+   gcloud auth application-default login
+   ```
+
+## Scripts Principales
+
+A continuación se listan los comandos más utilizados para operar el proyecto:
+
+- **Levantar el servidor local (Desarrollo):**
+  ```bash
+  uvicorn app.main:app --reload --port 8000
+  ```
+- **Probar el estado (Health Check):**
+  ```bash
+  curl http://localhost:8000/health
+  ```
+- **Probar el endpoint web (Simulación de Chat):**
+  ```bash
+  curl -X POST http://localhost:8000/api/chat \
+    -H "Content-Type: application/json" \
+    -d '{"message": "Hola, ¿qué puedes hacer?", "session_id": "test-123"}'
+  ```
+- **Construir y desplegar a Cloud Run directamente:**
+  ```bash
+  gcloud run deploy gateway --source . --region us-central1 --allow-unauthenticated
+  ```
+
+---
 
 ## Estructura del Proyecto
 
@@ -34,120 +97,21 @@ gateway/
 └── README.md
 ```
 
-## Configuración Local
+## Configuración de Webhooks en Producción
 
-### 1. Clonar y configurar variables de entorno
-
-```bash
-cp .env.example .env
-# Edita .env con tus credenciales reales
-```
-
-### 2. Crear entorno virtual e instalar dependencias
-
-```bash
-python -m venv .venv
-# Windows
-.venv\Scripts\activate
-# macOS/Linux
-source .venv/bin/activate
-
-pip install -r requirements.txt
-```
-
-### 3. Autenticación con Google Cloud
-
-```bash
-# Opción A: Credenciales de aplicación (desarrollo local)
-gcloud auth application-default login
-
-# Opción B: Service Account key (producción)
-export GOOGLE_APPLICATION_CREDENTIALS="/path/to/sa-key.json"
-```
-
-### 4. Ejecutar el servidor
-
-```bash
-uvicorn app.main:app --reload --port 8000
-```
-
-### 5. Probar el endpoint web
-
-```bash
-curl -X POST http://localhost:8000/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Hola, ¿qué puedes hacer?", "session_id": "test-123"}'
-```
-
-### 6. Health check
-
-```bash
-curl http://localhost:8000/health
-```
-
-## Despliegue en Cloud Run
-
-### Opción 1: Deploy desde código fuente (recomendado)
-
-```bash
-gcloud run deploy gateway \
-  --source . \
-  --region us-central1 \
-  --allow-unauthenticated \
-  --set-env-vars "PROJECT_ID=tu-proyecto,LOCATION=us-central1,REASONING_ENGINE_ID=projects/tu-proyecto/locations/us-central1/reasoningEngines/123456" \
-  --set-env-vars "TELEGRAM_BOT_TOKEN=tu-token" \
-  --set-env-vars "WHATSAPP_ACCESS_TOKEN=tu-token,WHATSAPP_VERIFY_TOKEN=tu-secret,WHATSAPP_PHONE_NUMBER_ID=123456"
-```
-
-### Opción 2: Build manual + deploy
-
-```bash
-# Build
-docker build -t gcr.io/TU_PROYECTO/gateway .
-
-# Push
-docker push gcr.io/TU_PROYECTO/gateway
-
-# Deploy
-gcloud run deploy gateway \
-  --image gcr.io/TU_PROYECTO/gateway \
-  --region us-central1 \
-  --allow-unauthenticated
-```
-
-## Configuración de Webhooks
-
-Una vez desplegado, obtendrás una URL como `https://gateway-xxxxx.run.app`.
+Una vez desplegado en Cloud Run, obtendrás una URL como `https://gateway-xxxxx.run.app`.
 
 ### Telegram
-
+Para que Telegram envíe los mensajes de los usuarios a tu Gateway, registra el webhook:
 ```bash
 curl "https://api.telegram.org/bot<TU_TOKEN>/setWebhook?url=https://gateway-xxxxx.run.app/webhook/telegram"
 ```
 
 ### WhatsApp
-
 1. Ve al [Meta App Dashboard](https://developers.facebook.com/)
 2. En **Webhooks**, configura la URL: `https://gateway-xxxxx.run.app/webhook/whatsapp`
-3. Usa el mismo `WHATSAPP_VERIFY_TOKEN` que configuraste en `.env`
+3. Usa el mismo `WHATSAPP_VERIFY_TOKEN` que configuraste en tu `.env`
 4. Suscríbete al campo `messages`
 
-## Endpoints
-
-| Método | Ruta | Descripción |
-|--------|------|-------------|
-| `GET` | `/health` | Health check |
-| `POST` | `/api/chat` | Chat web (JSON) |
-| `POST` | `/webhook/telegram` | Webhook Telegram |
-| `GET` | `/webhook/whatsapp` | Verificación Meta |
-| `POST` | `/webhook/whatsapp` | Mensajes WhatsApp |
-
-## Service Account
-
-La Service Account de Cloud Run necesita el rol:
-
-```
-roles/aiplatform.user
-```
-
-Esto permite al Gateway llamar al Reasoning Engine en Vertex AI.
+## Permisos requeridos
+La Service Account asociada al servicio de Cloud Run necesita contar con el rol `roles/aiplatform.user` en IAM para poder ejecutar las consultas contra el Vertex AI Reasoning Engine alojado en el otro proyecto.
